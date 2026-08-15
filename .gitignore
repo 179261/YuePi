@@ -4,5 +4,6 @@ dist
 dev-dist
 public/cmaps
 yuepi-dist.zip
+.upload
 *.local
 .DS_Store
