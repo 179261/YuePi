@@ -11,7 +11,7 @@ interface Props {
   activePdfId: string | null
   activeBoardId: string | null
   activeChatId: string | null
-  onImportPDF: (file: File) => void
+  onImportPDF: (file?: File) => void
   onOpenPDF: (id: string) => void
   onDeletePDF: (id: string) => void
   onNewBoard: () => void
@@ -75,8 +75,9 @@ export default function FileSidebar(p: Props) {
 
       {tab === 'pdf' && (
         <div className="sidebar-body">
-          <button className="tb-btn act import-btn" onClick={() => fileRef.current?.click()}>＋ 导入 PDF</button>
-          {/* 根级 App.tsx 另有一个同名入口（开始使用页）；这里只保留 ref，避免重复 id */}
+          {/* APK 走原生文件选择器（大文件直存原生）；网页由 App 打开系统文件选择 */}
+          <button className="tb-btn act import-btn" onClick={() => p.onImportPDF()}>＋ 导入 PDF</button>
+          {/* 网页回退入口：App 在无原生环境时触发根级 file input */}
           <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden
             onChange={(e) => {
               const f = e.target.files?.[0]

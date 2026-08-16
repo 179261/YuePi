@@ -1,9 +1,14 @@
-// ============ PDF 渲染引擎（pdf.js v3.11，经典 Worker，兼容旧内核如鸿蒙 4.2 平板浏览器） ============
+// ============ PDF 渲染引擎（pdf.js v3.11，经典 Worker，兼容旧内核与 APK WebView） ============
 import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorker
+// Worker 通过 ?raw 内联进主 bundle，再用 Blob URL 创建：
+// 兼容 https / file:// / APK 内嵌资源等一切加载环境（file:// 下 new Worker(相对路径) 会被安全策略禁止，
+// 导致 pdf.js 退化为"主线程假 Worker"，渲染慢且不稳定；Blob URL 无此限制，也不受跨域影响）
+import workerRaw from 'pdfjs-dist/build/pdf.worker.min.js?raw'
+
+const workerBlobUrl = URL.createObjectURL(new Blob([workerRaw], { type: 'application/javascript' }))
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerBlobUrl
 
 /** 渲染清晰度倍率（canvas 物理分辨率相对 CSS 尺寸） */
 export const BASE_QUALITY = 1.5
@@ -28,16 +33,28 @@ export function pageSize1(page: PDFPageProxy): { width: number; height: number }
   return { width: vp.width, height: vp.height }
 }
 
+/** 单个 Promise 超时保护：超过时限 reject（用于 getPage 等可能挂起的调用，避免阻塞整批测量/渲染） */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, rej) => {
+      setTimeout(() => rej(new Error('timeout')), ms)
+    })
+  ])
+}
+
 /**
  * 并行测量一批页面的尺寸。
  * getPage(i) 只解析页字典（不渲染），很快，但串行 await 几百次在平板上仍要数秒。
  * 这里用固定并发数批量并行，显著缩短打开/滚动到未测页的等待。
+ * 个别页解析挂起/失败时跳过（带超时），不阻塞整批。
  * @param pageNums 1-based 页码数组
  */
 export async function measurePageSizes(
   pdf: PDFDocumentProxy,
   pageNums: number[],
-  concurrency = 16
+  concurrency = 16,
+  timeoutMs = 3000
 ): Promise<Map<number, { width: number; height: number }>> {
   const out = new Map<number, { width: number; height: number }>()
   if (!pageNums.length) return out
@@ -47,10 +64,10 @@ export async function measurePageSizes(
     while (idx < pageNums.length) {
       const pn = pageNums[idx++]
       try {
-        const page = await pdf.getPage(pn)
+        const page = await withTimeout(pdf.getPage(pn), timeoutMs)
         out.set(pn - 1, pageSize1(page))
       } catch {
-        /* 个别页解析失败跳过，不阻塞整批 */
+        /* 个别页解析超时/失败跳过，不阻塞整批 */
       }
     }
   })

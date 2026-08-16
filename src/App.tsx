@@ -1,5 +1,6 @@
 // ============ 应用主框架：文件管理 / PDF批注 / 白板 / AI 悬浮分屏 ============
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import * as db from './core/db'
 import { DEFAULT_SETTINGS, uid } from './core/types'
 import type {
@@ -20,6 +21,14 @@ type View = 'pdf' | 'board' | 'home'
 
 export default function App() {
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS)
+  /** 背景主题（设置里可换；CSS 变量 --yuepi-bg 应用） */
+  const [bgTheme, setBgTheme] = useState<string>(() => {
+    try {
+      return localStorage.getItem('yuepi.bg') || '纸黄'
+    } catch {
+      return '纸黄'
+    }
+  })
   const [pdfs, setPdfs] = useState<PDFDocMeta[]>([])
   const [boards, setBoards] = useState<WhiteboardMeta[]>([])
   const [chats, setChats] = useState<ChatSession[]>([])
@@ -86,10 +95,65 @@ export default function App() {
     })()
   }, [refreshLists])
 
+  // 应用主题色（CSS 变量：主背景 / 面板 / 边框 / 卡片，整套 UI 一起换色）
+  useEffect(() => {
+    const themes: Record<string, { bg: string; panel: string; border: string; card: string }> = {
+      纸黄: { bg: '#fbf3d9', panel: '#fff8e6', border: '#e3d5a8', card: '#fffaf0' },
+      米白: { bg: '#faf6ec', panel: '#fffdf5', border: '#e8dfc8', card: '#ffffff' },
+      浅绿: { bg: '#eef4e4', panel: '#f5f8ee', border: '#d5e2c2', card: '#fbfdf5' },
+      浅蓝: { bg: '#e8f0f7', panel: '#f2f7fb', border: '#c9dce8', card: '#f7fafc' }
+    }
+    const t = themes[bgTheme] ?? themes['纸黄']
+    const root = document.documentElement.style
+    root.setProperty('--yuepi-bg', t.bg)
+    root.setProperty('--yuepi-panel', t.panel)
+    root.setProperty('--yuepi-border', t.border)
+    root.setProperty('--yuepi-card', t.card)
+    try {
+      localStorage.setItem('yuepi.bg', bgTheme)
+    } catch {
+      /* ignore */
+    }
+  }, [bgTheme])
+
   // ---------- PDF ----------
+  /** APK 环境：原生文件选择器（大文件直存 app 私有目录，不走 base64/IndexedDB） */
+  const nativePick = useCallback((): any => {
+    try {
+      return (Capacitor as unknown as { Plugins?: Record<string, any> }).Plugins?.YuepiPDF ?? null
+    } catch {
+      return null
+    }
+  }, [])
+
   const importPDF = useCallback(
-    async (file: File) => {
+    async (file?: File) => {
       try {
+        // APK：原生文件选择器 → 文件直存原生私有目录
+        const native = nativePick()
+        if (native) {
+          const r = await native.pickFile()
+          const meta: PDFDocMeta = {
+            id: r.id,
+            name: r.name,
+            addedAt: Date.now(),
+            size: r.size,
+            pageCount: 0,
+            nativePath: r.path
+          }
+          await db.putPDF(meta)
+          await refreshLists()
+          setActivePdfId(meta.id)
+          setActivePdf(meta)
+          setView('pdf')
+          showToast(`已导入《${r.name}》（正在解析页数…）`)
+          return
+        }
+        // 网页：需要文件（无 file 时打开系统文件选择）
+        if (!file) {
+          fileInputRef.current?.click()
+          return
+        }
         // 大文件提示（平板浏览器内存有限）
         if (file.size > 80 * 1024 * 1024) {
           showToast(`文件较大（${Math.round(file.size / 1048576)}MB），平板浏览器内存有限，打开时可能较慢或失败`)
@@ -114,7 +178,7 @@ export default function App() {
         showToast('导入失败：' + (e instanceof Error ? e.message : String(e)))
       }
     },
-    [refreshLists, showToast]
+    [nativePick, refreshLists, showToast]
   )
 
   /** 打开文档后回填页数 */
@@ -134,7 +198,16 @@ export default function App() {
   const deletePDF = useCallback(
     async (id: string) => {
       try {
+        const meta = await db.getPDF(id)
         await db.deletePDF(id)
+        // APK：同时删除原生私有目录里的文件
+        if (meta?.nativePath) {
+          try {
+            await (Capacitor as unknown as { Plugins?: Record<string, any> }).Plugins?.YuepiPDF?.deleteFile({ path: meta.nativePath })
+          } catch {
+            /* 文件删除失败不影响主流程 */
+          }
+        }
         await refreshLists()
         if (activePdfId === id) {
           setActivePdfId(null)
@@ -154,6 +227,13 @@ export default function App() {
       try {
         const meta = await db.getPDF(id)
         if (!meta) return
+        // APK 大文件：文件在原生私有目录，无需加载字节到 JS
+        if (meta.nativePath) {
+          setActivePdf({ ...meta })
+          setActivePdfId(id)
+          setView('pdf')
+          return
+        }
         const data = await db.getPDFData(id)
         if (!data) {
           showToast('文件数据缺失，请重新导入')
@@ -514,6 +594,7 @@ export default function App() {
             <button className="tb-btn act" onClick={() => setChatOpen((v) => !v)} title="AI 助手">
               {chatOpen ? '🙈 收起AI' : '🤖 AI助手'}
             </button>
+            <button className="tb-btn" onClick={() => setSettingsOpen(true)} title="设置（外观 / AI 路由）">⚙️ 设置</button>
           </div>
         </header>
       ) : (
@@ -596,7 +677,7 @@ export default function App() {
             />
           ) : (
             <HomeView
-              onImport={() => fileInputRef.current?.click()}
+              onImport={() => void importPDF()}
               onNewBoard={() => void newBoard()}
             />
           )}
@@ -616,6 +697,11 @@ export default function App() {
             onClose={() => setChatOpen(false)}
             onNew={() => void newChat()}
             onOpenSettings={() => setSettingsOpen(true)}
+            chats={chats}
+            activeChatId={activeChatId}
+            onOpenChat={(id) => void openChat(id)}
+            onDeleteChat={(id) => void deleteChat(id)}
+            onSaveSettings={(s) => void saveSettings(s)}
           />
         )}
       </div>
@@ -636,6 +722,8 @@ export default function App() {
         <SettingsModal
           settings={settings}
           chats={chats}
+          bgTheme={bgTheme}
+          onBgChange={setBgTheme}
           onSave={(s) => void saveSettings(s)}
           onClose={() => setSettingsOpen(false)}
           onToast={showToast}

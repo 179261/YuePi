@@ -1,8 +1,8 @@
-// ============ PDF 阅读 + 手写批注视图（虚拟滚动 + 两级渲染 + 位图缓存） ============
+// ============ PDF 阅读 + 手写批注视图（虚拟滚动 + 两级渲染 + 位图缓存，双渲染引擎） ============
 // 性能设计：
-//  - 页面尺寸"分批并行测量"：首批并发测 48 页立即上屏，其余页后台继续测，不再串行等全部测完
+//  - 渲染引擎抽象：APK 走原生 Pdfium（Capacitor 插件），网页走 pdf.js（见 core/renderEngine.ts）
 //  - DOM 虚拟化：只挂载可视区 ± VIRTUAL_BUFFER 页的节点，几百页文档也只渲染几十个节点
-//  - 两级渲染：翻页/打开时当前页先以低清快速上屏（不白屏），80ms 后再离屏高清升级替换
+//  - 两级渲染：停止/翻页后当前页先低清快速上屏（不白屏），完成后立即升级高清
 //  - LRU 位图缓存：渲染结果缓存最近若干页，翻页回看直接显示，不重新渲染
 import {
   forwardRef,
@@ -14,12 +14,11 @@ import {
   useRef,
   useState
 } from 'react'
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
-import * as pdfEngine from '../core/pdfEngine'
 import { Annotator } from '../core/annotate'
 import * as db from '../core/db'
 import { flattenAnnotations } from '../core/exportPdf'
 import { downloadBlob, downloadDataURL } from '../core/download'
+import { getRenderEngine } from '../core/renderEngine'
 import type { PDFDocMeta, Tool } from '../core/types'
 
 export interface PdfViewerHandle {
@@ -128,25 +127,35 @@ type PageSize = { width: number; height: number }
 type SizeOrNull = PageSize | null
 
 /**
- * 渲染策略（单级渲染，消除"低清先行 + 高清升级"的二次渲染，总渲染时间几乎减半）：
- *  - 当前页：直接渲染最高清（用户可调的精度档位，默认 2.0 = 平板屏幕 1:1 物理像素）
+ * 渲染策略（两级渲染 + 失败降级，兼顾速度与稳定性）：
+ *  - 停止/翻页后：先只渲染当前页低清（PREVIEW_QUALITY）独占上屏 → 页面立即有内容（不白屏、主线程阻塞短），
+ *    完成后 50ms 立即升级最高清（quality 档位 × zoom）
  *  - 邻居页（cur±RENDER_WINDOW）：低清 LOW_QUALITY，滚动进入视口时已有内容
- *  - 滚动中：限流渲染当前页低清（PREVIEW_QUALITY），保证滑动时页面有内容
+ *  - 滚动中：限流渲染当前页低清，保证滑动时页面有内容
  *  - 位图缓存：已看过的页翻回直接恢复，零等待
+ *  - 渲染失败：自动降档重试（高→低），消除"某页永远空白"
  */
-/** 渲染窗口：当前页前后各预渲染的页数（缩小窗口 → 渲染总量更少，当前页高清独占优先） */
+/** Android WebView（APK 场景）：渲染资源更受限，降低并发/缓存、默认精度上限，优先稳定性 */
+const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
+/** 渲染窗口：当前页前后各预渲染的页数（原生 Pdfium 渲染极快，邻居预渲染让翻页零等待） */
 const RENDER_WINDOW = 1
 /** 虚拟化缓冲：可视区前后额外挂载的页面数（必须 ≥ RENDER_WINDOW，预渲染的页才有 DOM） */
 const VIRTUAL_BUFFER = 3
-/** 邻居页清晰度 */
+/** 邻居页清晰度（显示质量档） */
 const LOW_QUALITY = 1.25
-/** 滚动中当前页的"跟随"清晰度（快速上屏，停止后升级最高清） */
+/** 渲染失败降级的最低档（1.0 = 最小 canvas，最大化成功率） */
+const MIN_RENDER_QUALITY = 1
+/** 停止后当前页的"先行"清晰度（快速上屏，随后升级最高清） */
 const PREVIEW_QUALITY = 1.25
-/** 同时渲染的页数上限（2 路：当前页高清优先，避免被邻居页争抢 CPU） */
-const CONCURRENCY = 2
-/** 位图缓存：页数上限与总像素预算（A4@1.75 ≈ 2.8M 像素/页，预算 ≈ 7 页） */
+/** 同时渲染的页数上限（Android 串行，减少内存峰值与争抢） */
+const CONCURRENCY = IS_ANDROID ? 1 : 2
+/** 位图缓存：页数上限与总像素预算（Android 收紧，防 WebView 内存压力导致渲染失败） */
 const MAX_CACHE_PAGES = 10
-const MAX_CACHE_PIXELS = 20 * 1024 * 1024
+const MAX_CACHE_PIXELS = (IS_ANDROID ? 8 : 20) * 1024 * 1024
+/** 同一页连续渲染失败的最大次数（超过则放弃该页并提示，防止卡死） */
+const MAX_RENDER_FAILS = 2
+/** getPage 超时（个别页解析挂起时不阻塞整批） */
+const PAGE_TIMEOUT_MS = 3000
 /** 页面纵向间距与上下留白（与 CSS 保持一致） */
 const PAGE_GAP = 14
 const PAD_TOP = 12
@@ -256,11 +265,13 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   { meta, onToast, onAskImage, onAskText, onToBoard, boardOverlayOpen, onToggleBoard, onPagesLoaded, onPageChange },
   ref
 ) {
-  const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
+  /** 文档就绪标志（引擎 open 完成后置 true；尺寸由引擎一次性提供，不再按需测量） */
+  const [pdfReady, setPdfReady] = useState(false)
   const [sizes, setSizes] = useState<SizeOrNull[]>([])
   const [zoom, setZoom] = useState(1)
-  /** 渲染精度档位（canvas 物理分辨率倍率）：默认跟随设备像素密度（高清屏 2.5/3 也能 1:1 显示）；
-   *  2x 偏低通常是因为平板 dpr>2（如 2.5/3），档位最高到 4x，可显著提升清晰度 */
+  /** 渲染精度档位（canvas 物理分辨率倍率）：
+   *  桌面/浏览器：跟随设备像素密度（高清屏 2.5/3 也能 1:1 显示）；
+   *  Android WebView（APK）：默认上限 2，性能优先（用户可用工具栏 💠 按钮调高） */
   const [quality, setQuality] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('yuepi.quality')
@@ -271,7 +282,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
     } catch {
       /* ignore */
     }
-    // 默认至少 2x；高 dpr 屏幕（华为/小米平板常见 2.25~3）跟随 dpr，保证 1:1 物理像素
+    if (IS_ANDROID) return Math.min(2, Math.max(1.5, window.devicePixelRatio || 2))
     return Math.max(2, Math.min(4, Math.round((window.devicePixelRatio || 2) * 2) / 2))
   })
   const [tool, setTool] = useState<Tool>('pan')
@@ -302,8 +313,10 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   const pdfCanvasRefs = useRef<(HTMLCanvasElement | null)[]>([])
   const annoCanvasRefs = useRef<(HTMLCanvasElement | null)[]>([])
   const annotatorsRef = useRef(new Map<number, Annotator>())
-  const renderTasksRef = useRef(new Map<number, { cancel: () => void }>())
+  const renderTasksRef = useRef(new Set<number>())
   const renderedQualityRef = useRef(new Map<number, number>())
+  /** 每页连续渲染失败计数（超过上限放弃该页，防止卡死） */
+  const failCountRef = useRef(new Map<number, number>())
   /** LRU 位图缓存：key=页索引，value=已渲染的离屏 canvas（插入序 = 使用序） */
   const bitmapCacheRef = useRef(new Map<number, HTMLCanvasElement>())
   const cacheQualityRef = useRef(new Map<number, number>())
@@ -313,7 +326,8 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   const zoomRef = useRef(1)
   const qualityRef = useRef(2)
   const curPageRef = useRef(1)
-  const pdfRef = useRef<PDFDocumentProxy | null>(null)
+  /** 当前环境的渲染引擎（APK → 原生 Pdfium；网页 → pdf.js） */
+  const engineRef = useRef(getRenderEngine())
   const metaRef = useRef(meta)
   const sizesRef = useRef<SizeOrNull[]>([])
   const estHRef = useRef(842)
@@ -325,6 +339,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   const scrollRafRef = useRef(0)
   const scheduleTimerRef = useRef(0)
   const selfHealTimerRef = useRef(0)
+  const upgradeTimerRef = useRef(0)
   /** 正在快速滚动：滚动中不调度渲染（避免滚动途中的渲染任务占满 worker，拖慢停止后的目标页） */
   const rollingRef = useRef(false)
   /** 滚动停止判定定时器（120ms 无滚动事件 = 停止） */
@@ -341,80 +356,51 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   qualityRef.current = quality
   curPageRef.current = curPage
 
-  // ---------- 加载 PDF：尺寸"分批并行测量"，首批上屏后后台续测 ----------
+  // ---------- 加载 PDF：引擎打开（APK 原生 Pdfium 秒出全部尺寸；网页 pdf.js 并发测量） ----------
   useEffect(() => {
-    if (!meta.data) {
+    // 原生大文件模式只有 nativePath（文件在 app 私有目录），data 允许为空
+    if (!meta.data && !meta.nativePath) {
       onToast('文件数据缺失，请重新导入')
       return
     }
     let cancelled = false
-    let doc: PDFDocumentProxy | null = null
+    // 打开前重新检测并创建引擎（Capacitor 桥就绪后 APK 才会拿到原生引擎）
+    const engine = getRenderEngine()
+    engineRef.current = engine
     ;(async () => {
       try {
-        doc = await pdfEngine.loadPDF(meta.data as ArrayBuffer)
+        // APK 大文件：meta.nativePath 存在时原生直接读文件；否则传字节
+        const data = metaRef.current.data ?? null
+        const { pageCount, pages } = await engine.open(data, metaRef.current.name, metaRef.current.nativePath)
+        // 诊断：logcat 里可看到引擎类型与页数（"native"= 原生 Pdfium，"pdfjs"= 网页引擎）
+        console.log(`[pdf] engine=${engine.isNative() ? 'native' : 'pdfjs'} pages=${pageCount}`)
         if (cancelled) {
-          void doc.destroy()
+          engine.close()
           return
         }
-        pdfRef.current = doc
-        const total = doc.numPages
-        const arr: SizeOrNull[] = new Array(total).fill(null)
-        // 第一批并发测量 → 立即渲染上屏
-        const firstNums = Array.from({ length: Math.min(FIRST_MEASURE, total) }, (_, i) => i + 1)
-        const first = await pdfEngine.measurePageSizes(doc, firstNums, MEASURE_CONCURRENCY)
-        for (const [i, s] of first) arr[i] = s
-        if (cancelled) return
-        sizesRef.current = arr
-        pendingScrollRef.current = Math.min(Math.max(1, metaRef.current.lastPage ?? 1), total)
-        setPdf(doc)
-        setSizes([...arr])
-        onPagesLoadedRef.current?.(total)
-        // 剩余页"按需优先"测量：每次取离当前阅读页最近的 32 页并发测，
-        // 快速滑到未测页时优先补测该页附近，避免停在"正在解析…"上等顺序批次
-        const remaining = new Set<number>()
-        for (let i = FIRST_MEASURE; i < total; i++) remaining.add(i)
-        while (remaining.size) {
-          if (cancelled) return
-          // 滚动中暂停测量：避免并发 getPage 回调抢占主线程导致滑动卡顿（停止后自动继续）
-          if (rollingRef.current) {
-            await new Promise((r) => setTimeout(r, 60))
-            continue
-          }
-          const cur = curIdxRef.current
-          const sorted = [...remaining].sort((a, b) => Math.abs(a - cur) - Math.abs(b - cur))
-          const batch = sorted.slice(0, MEASURE_BATCH)
-          for (const i of batch) remaining.delete(i)
-          const nums = batch.map((i) => i + 1)
-          const res = await pdfEngine.measurePageSizes(doc, nums, MEASURE_CONCURRENCY)
-          if (cancelled) return
-          for (const [i, s] of res) arr[i] = s
-          sizesRef.current = arr
-          setSizes([...arr])
-        }
+        sizesRef.current = pages
+        pendingScrollRef.current = Math.min(Math.max(1, metaRef.current.lastPage ?? 1), pageCount)
+        setPdfReady(true)
+        setSizes(pages)
+        onPagesLoadedRef.current?.(pageCount)
       } catch (e) {
         onToast('PDF 加载失败：' + (e instanceof Error ? e.message : String(e)))
       }
     })()
     return () => {
       cancelled = true
-      if (doc) void doc.destroy()
-      pdfRef.current = null
+      engine.close()
       sizesRef.current = []
-      for (const t of renderTasksRef.current.values()) {
-        try {
-          t.cancel()
-        } catch {
-          /* ignore */
-        }
-      }
       renderTasksRef.current.clear()
       renderedQualityRef.current.clear()
+      failCountRef.current.clear()
       bitmapCacheRef.current.clear()
       cacheQualityRef.current.clear()
       cachePixelsRef.current = 0
       renderErrShownRef.current = false
       if (scheduleTimerRef.current) window.clearTimeout(scheduleTimerRef.current)
       if (selfHealTimerRef.current) window.clearTimeout(selfHealTimerRef.current)
+      if (upgradeTimerRef.current) window.clearTimeout(upgradeTimerRef.current)
       if (rollingTimerRef.current) window.clearTimeout(rollingTimerRef.current)
       rollingRef.current = false
     }
@@ -474,13 +460,13 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
     }
   }, [sizes, estH, zoom, viewTop, offsets])
 
-  // ---------- 打开时恢复上次阅读位置（目标页测到后执行） ----------
+  // ---------- 打开时恢复上次阅读位置（尺寸就绪后执行） ----------
   useEffect(() => {
-    if (!pdf || !sizes.length) return
+    if (!pdfReady || !sizes.length) return
     const target = pendingScrollRef.current
     if (target == null) return
     const s = sizes[target - 1]
-    if (!s) return // 该页还没测到，等下一批尺寸
+    if (!s) return // 该页没有尺寸（异常），等引擎重试
     pendingScrollRef.current = null
     const top = Math.max(0, offsets[target - 1] - 8)
     const el = containerRef.current
@@ -492,7 +478,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
     setCurPage(target)
     curIdxRef.current = target - 1
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdf, sizes])
+  }, [pdfReady, sizes])
 
   // ---------- 当前页变化时上报（用于保存阅读位置） ----------
   useEffect(() => {
@@ -550,19 +536,26 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
     renderedQualityRef.current.delete(i)
   }, [])
 
-  // ---------- 渲染窗口（单级）：当前页最高清 / 邻居低清 / 缓存复用 ----------
+  // ---------- 渲染窗口（两级：当前页低清先行 → 高清升级 / 失败降级 / 缓存复用） ----------
   const renderWindow = useCallback(
-    (gen: number, lo: number, hi: number, mode: 'current' | 'scroll' | 'full', cur: number, sizesArr: SizeOrNull[]) => {
+    (
+      gen: number,
+      lo: number,
+      hi: number,
+      mode: 'quick' | 'scroll' | 'full',
+      cur: number,
+      sizesArr: SizeOrNull[],
+      onPageRendered?: (i: number, q: number) => void
+    ) => {
       const pending: { i: number; q: number }[] = []
       for (let i = lo; i <= hi; i++) {
         const canvas = pdfCanvasRefs.current[i]
         if (!canvas || renderTasksRef.current.has(i)) continue
         const s = sizesArr[i]
         if (!s) continue // 尺寸未测到，等后续批次
-        // 当前页：scroll 模式（滚动中）用低清跟随，其余模式直接最高清（一次渲染到位，无二次升级）。
-        // 质量 = 用户可调的精度档位 × zoom（物理/CSS 像素比保持恒定，缩放查看细节不模糊；上限 4 由画布 4096 兜底）
+        // 当前页：quick/scroll（停止后先行 / 滚动中跟随）用低清快速上屏；full 升级到用户精度档位 × zoom
         const targetQ = i === cur
-          ? (mode === 'scroll' ? PREVIEW_QUALITY : Math.min(4, Math.max(1.25, qualityRef.current * zoomRef.current)))
+          ? (mode === 'quick' || mode === 'scroll' ? PREVIEW_QUALITY : Math.min(4, Math.max(1.25, qualityRef.current * zoomRef.current)))
           : LOW_QUALITY
         // 画布为 1×1 说明是"虚拟化回收后重新挂载"或刚被重建清空：
         // 必须撤销"已渲染"记录，否则会被下面的 renderedQ >= targetQ 误判为已渲染而跳过 → 空白页
@@ -592,44 +585,46 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
           const canvas = pdfCanvasRefs.current[i]
           const s = sizesArr[i]
           if (!canvas || !s) continue
-          let page: PDFPageProxy
-          try {
-            page = await pdfRef.current!.getPage(i + 1)
-          } catch {
-            continue
-          }
-          if (renderGenRef.current !== gen) return
-          // 统一离屏渲染 → 结果同时入缓存 + 上屏（一次渲染，多处复用）
-          const temp = document.createElement('canvas')
-          let handle: ReturnType<typeof pdfEngine.renderPageToCanvasEx>
-          try {
-            handle = pdfEngine.renderPageToCanvasEx(page, temp, s.width, s.height, q)
-          } catch {
-            continue
-          }
-          renderTasksRef.current.set(i, { cancel: handle.cancel })
-          try {
-            await handle.done
-            if (renderTasksRef.current.get(i)?.cancel !== handle.cancel) return
-            putCache(i, temp, q)
-            // 页仍在 DOM 且任务仍最新 → 一帧内上屏（无白屏闪现）
-            const c = pdfCanvasRefs.current[i]
-            if (c) drawBitmap(temp, c)
-            renderedQualityRef.current.set(i, q)
-            renderTasksRef.current.delete(i)
-          } catch (e) {
-            const isCurrent = renderTasksRef.current.get(i)?.cancel === handle.cancel
-            if (!isCurrent) {
-              // 非当前任务的迟到取消：canvas 可能已被新渲染占用，绝不能重置
-              return
-            }
-            renderTasksRef.current.delete(i)
-            const msg = e instanceof Error ? e.message : String(e)
-            // "Rendering cancelled" 是缩放/快速滑动时主动取消，属正常现象，不提示
-            if (/cancel/i.test(msg)) return
-            if (!renderErrShownRef.current) {
-              renderErrShownRef.current = true
-              onToast('页面渲染失败：' + msg)
+          // 渲染单页（失败自动降档重试：高→低直到 MIN_RENDER_QUALITY；连续失败超限则放弃该页，防止卡死）
+          let curQ = q
+          for (;;) {
+            if (renderGenRef.current !== gen) return
+            const temp = document.createElement('canvas')
+            renderTasksRef.current.add(i)
+            try {
+              await engineRef.current.renderPage(i, temp, s.width, s.height, curQ)
+              // 重建/切换后丢弃迟到结果
+              if (renderGenRef.current !== gen) {
+                renderTasksRef.current.delete(i)
+                return
+              }
+              putCache(i, temp, curQ)
+              // 页仍在 DOM 且任务仍最新 → 一帧内上屏（无白屏闪现）
+              const c = pdfCanvasRefs.current[i]
+              if (c) drawBitmap(temp, c)
+              renderedQualityRef.current.set(i, curQ)
+              renderTasksRef.current.delete(i)
+              failCountRef.current.delete(i)
+              onPageRendered?.(i, curQ)
+              break
+            } catch (e) {
+              renderTasksRef.current.delete(i)
+              const msg = e instanceof Error ? e.message : String(e)
+              // 主动取消 → 正常；超时 → 跳过该页等下次；其余失败 → 降档重试
+              if (/cancel/i.test(msg)) return
+              if (/timeout/i.test(msg)) break
+              if (curQ > MIN_RENDER_QUALITY) {
+                curQ = Math.max(MIN_RENDER_QUALITY, +(curQ - 0.5).toFixed(2))
+                continue
+              }
+              // 已降到最低档仍失败：记录次数，超过上限放弃该页并提示
+              const fails = (failCountRef.current.get(i) || 0) + 1
+              failCountRef.current.set(i, fails)
+              if (fails <= MAX_RENDER_FAILS && !renderErrShownRef.current) {
+                renderErrShownRef.current = true
+                onToast(`第 ${i + 1} 页渲染失败（已用最低清晰度重试）：${msg}`)
+              }
+              break
             }
           }
         }
@@ -641,55 +636,65 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
 
   /**
    * 渲染当前可视窗口：
-   *  - 'current'：只渲染当前页（最高清，独占渲染资源，最快出结果）
-   *  - 'scroll'：滚动中，当前页低清跟随（保持页面有内容）
-   *  - 'full'：当前页最高清 + 邻居页低清（完整窗口）
+   *  - 'quick'：停止后先行，只渲当前页低清（独占，最快上屏，不白屏）
+   *  - 'scroll'：滚动中，当前页低清跟随
+   *  - 'full'：当前页升级最高清 + 邻居页低清
    */
   const renderViewport = useCallback(
-    (gen: number, mode: 'current' | 'scroll' | 'full') => {
+    (gen: number, mode: 'quick' | 'scroll' | 'full', onPageRendered?: (i: number, q: number) => void) => {
       const sizesArr = sizesRef.current
       const n = sizesArr.length
-      if (!pdfRef.current || !n) return
+      if (!n) return
       const el = containerRef.current
       const vh = el ? el.clientHeight : 600
       const offs = computeOffsets(sizesArr, estHRef.current, zoomRef.current)
       const cur = pageIndexAt(offs, viewTopRef.current + vh / 2)
       curIdxRef.current = cur
-      if (mode === 'current' || mode === 'scroll') {
-        renderWindow(gen, cur, cur, mode, cur, sizesArr)
+      if (mode === 'quick' || mode === 'scroll') {
+        renderWindow(gen, cur, cur, mode, cur, sizesArr, onPageRendered)
       } else {
         const lo = Math.max(0, cur - RENDER_WINDOW)
         const hi = Math.min(n - 1, cur + RENDER_WINDOW)
-        renderWindow(gen, lo, hi, 'full', cur, sizesArr)
+        renderWindow(gen, lo, hi, 'full', cur, sizesArr, onPageRendered)
       }
     },
     [renderWindow]
   )
 
-  /** 调度一轮渲染：先只渲染当前页最高清（独占资源）→ 250ms 后补邻居低清 → 1.2s 自愈兜底 */
-  const scheduleWindow = useCallback(
+  /** 当前页低清上屏后，50ms 内请求高清升级（页面已有内容，升级不白屏） */
+  const requestUpgrade = useCallback(
     (gen: number) => {
-      if (!pdfRef.current || !sizesRef.current.length) return
-      if (scheduleTimerRef.current) window.clearTimeout(scheduleTimerRef.current)
-      if (selfHealTimerRef.current) window.clearTimeout(selfHealTimerRef.current)
-      renderViewport(gen, 'current')
-      scheduleTimerRef.current = window.setTimeout(() => renderViewport(gen, 'full'), 250)
-      selfHealTimerRef.current = window.setTimeout(() => renderViewport(gen, 'full'), 1200)
+      if (upgradeTimerRef.current) window.clearTimeout(upgradeTimerRef.current)
+      upgradeTimerRef.current = window.setTimeout(() => {
+        upgradeTimerRef.current = 0
+        renderViewport(gen, 'full')
+      }, 50)
     },
     [renderViewport]
   )
 
+  /** 调度一轮渲染：先低清独占上屏（页面立即有内容）→ 完成后立即升级高清 → 定时兜底 → 自愈兜底 */
+  const scheduleWindow = useCallback(
+    (gen: number) => {
+      if (!sizesRef.current.length) return
+      if (scheduleTimerRef.current) window.clearTimeout(scheduleTimerRef.current)
+      if (selfHealTimerRef.current) window.clearTimeout(selfHealTimerRef.current)
+      if (upgradeTimerRef.current) window.clearTimeout(upgradeTimerRef.current)
+      renderViewport(gen, 'quick', (i, q) => {
+        // 当前页低清完成 → 立即请求高清升级（滚动中不升级，避免拖慢滑动）
+        if (!rollingRef.current && i === curIdxRef.current && q < qualityRef.current) requestUpgrade(gen)
+      })
+      scheduleTimerRef.current = window.setTimeout(() => renderViewport(gen, 'full'), 250)
+      selfHealTimerRef.current = window.setTimeout(() => renderViewport(gen, 'full'), 1200)
+    },
+    [renderViewport, requestUpgrade]
+  )
+
   /** 重建渲染状态（文档切换 / 缩放变化） */
   const resetRenderState = useCallback(() => {
-    for (const t of renderTasksRef.current.values()) {
-      try {
-        t.cancel()
-      } catch {
-        /* ignore */
-      }
-    }
     renderTasksRef.current.clear()
     renderedQualityRef.current.clear()
+    failCountRef.current.clear()
     bitmapCacheRef.current.clear()
     cacheQualityRef.current.clear()
     cachePixelsRef.current = 0
@@ -701,40 +706,26 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
 
   /** 取消所有未完成的渲染任务（滚动停止后调用，让目标窗口的任务立即排上，不被滚动途中的旧任务阻塞） */
   const cancelAllTasks = useCallback(() => {
-    for (const t of renderTasksRef.current.values()) {
-      try {
-        t.cancel()
-      } catch {
-        /* ignore */
-      }
-    }
     renderTasksRef.current.clear()
   }, [])
 
   // 文档加载或缩放变化 → 重建渲染状态并按新参数调度
   useEffect(() => {
-    if (!pdf || !sizes.length) return
+    if (!pdfReady || !sizes.length) return
     const gen = ++renderGenRef.current
     resetRenderState()
     scheduleWindow(gen)
     return () => {
       renderGenRef.current++
-      for (const t of renderTasksRef.current.values()) {
-        try {
-          t.cancel()
-        } catch {
-          /* ignore */
-        }
-      }
       renderTasksRef.current.clear()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdf, renderTick])
+  }, [pdfReady, renderTick])
 
   // 滚动位置变化 → 补渲染新窗口内缺失/需升级的页（不重建）
   // 滚动中跳过（由 onScroll 的停止定时器在停下后统一调度，避免滚动途中的任务阻塞目标页）
   useEffect(() => {
-    if (!pdf || !sizes.length) return
+    if (!pdfReady || !sizes.length) return
     if (rollingRef.current) return
     scheduleWindow(renderGenRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -742,7 +733,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
 
   // 尺寸批次测量完成 → 窗口内新测到的页补渲染（不重建）
   useEffect(() => {
-    if (!pdf || !sizes.length) return
+    if (!pdfReady || !sizes.length) return
     if (rollingRef.current) return
     scheduleWindow(renderGenRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -751,7 +742,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   // ---------- 创建批注器（窗口化：只为视口附近的页分配批注画布，离开即释放，内存关键） ----------
   // 滚动中跳过（每帧释放/补建 + 读库会拖慢滑动）；滚动停止（settleTick +1）后整理一次
   useEffect(() => {
-    if (!pdf) return
+    if (!pdfReady) return
     if (rollingRef.current) return
     const annotators = annotatorsRef.current
     const sizesArr = sizesRef.current
@@ -791,7 +782,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
       annotators.clear()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdf, meta.id, curPage, sizes, settleTick])
+  }, [pdfReady, meta.id, curPage, sizes, settleTick])
 
   // ---------- 同步工具参数到批注器 ----------
   useEffect(() => {
@@ -903,13 +894,12 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
       let base: HTMLCanvasElement | null = null
       if (pdfCanvas && pdfCanvas.width > 1) {
         base = pdfCanvas
-      } else if (pdfRef.current) {
+      } else {
         // 页面不在视口/未渲染：临时离屏高清渲染（截图/框选发 AI 可能用到远页）
         const s = sizesRef.current[pageNum - 1] ?? { width: 595, height: 842 }
         try {
-          const page = await pdfRef.current.getPage(pageNum)
           const temp = document.createElement('canvas')
-          await pdfEngine.renderPageToCanvasEx(page, temp, s.width, s.height, 2).done
+          await engineRef.current.renderPage(pageNum - 1, temp, s.width, s.height, 2)
           base = temp
         } catch {
           return null
@@ -935,7 +925,8 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
 
   const exportAnnotatedPDF = useCallback(async () => {
     try {
-      const data = metaRef.current.data
+      // 原始 PDF 字节：原生引擎从插件取回；网页引擎用打开时的数据
+      const data = (await engineRef.current.getBytes()) ?? metaRef.current.data
       if (!data) {
         onToast('文件数据缺失，请重新导入')
         return
@@ -969,8 +960,8 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
 
   useImperativeHandle(ref, () => ({
     getCurrentPageSnapshot: () => composePage(curPageRef.current),
-    getCurrentPageText: () => (pdfRef.current ? pdfEngine.getPageText(pdfRef.current, curPageRef.current) : Promise.resolve('')),
-    getFullText: () => (pdfRef.current ? pdfEngine.getAllText(pdfRef.current) : Promise.resolve('')),
+    getCurrentPageText: () => engineRef.current.getPageText(curPageRef.current),
+    getFullText: () => engineRef.current.getAllText(),
     exportAnnotatedPDF,
     exportCurrentPNG,
     toggleToolbar
@@ -1014,8 +1005,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   )
 
   const askText = useCallback(async () => {
-    if (!pdfRef.current) return
-    const text = await pdfEngine.getPageText(pdfRef.current, curPageRef.current)
+    const text = await engineRef.current.getPageText(curPageRef.current)
     if (!text.trim()) {
       onToast('本页没有可提取的文字（可能是扫描版），请改用「截图发AI」')
       return
@@ -1033,8 +1023,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
   )
 
   const askFullText = useCallback(async () => {
-    if (!pdfRef.current) return
-    const text = await pdfEngine.getAllText(pdfRef.current)
+    const text = await engineRef.current.getAllText()
     if (!text.trim()) {
       onToast('没有可提取的文字（可能是扫描版），请改用「截图发AI」')
       return
@@ -1070,6 +1059,17 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
       }
       return nv
     })
+  }
+
+  /** 展开工具栏（修复：滚动自动隐藏后工具栏开关仍是开，点 mini 按钮若用 toggle 反而把它关掉 → 需点两次） */
+  const showToolbar = () => {
+    setAutoHidden(false)
+    setToolbarOpen(true)
+    try {
+      localStorage.setItem('yuepi.pdftoolbar', '1')
+    } catch {
+      /* ignore */
+    }
   }
 
   const goToPage = (n: number) => {
@@ -1225,11 +1225,14 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
       </div>
       ) : (
         <div className="pdf-toolbar-mini">
-          <button className="tb-btn" onClick={toggleToolbar} title="展开工具栏">✏️ ▴ 工具栏</button>
+          <button className="tb-btn" onClick={showToolbar} title="展开工具栏">✏️ ▴ 工具栏</button>
           <span className="page-indicator">第 {curPage} / {sizes.length || '?'} 页</span>
         </div>
       )}
       <div className="pdf-scroll" ref={containerRef} onScroll={onScroll}>
+        {!pdfReady && sizes.length === 0 ? (
+          <div className="pdf-loading">正在打开 PDF…</div>
+        ) : (
         <div className="pdf-pages v" style={{ height: totalHeight }}>
           {visiblePages.map((i) => (
             <PageItem
@@ -1250,6 +1253,7 @@ const PdfViewer = forwardRef<PdfViewerHandle, Props>(function PdfViewer(
             />
           ))}
         </div>
+        )}
       </div>
     </div>
   )

@@ -34,6 +34,8 @@ export interface PDFDocMeta {
   lastPage?: number
   /** PDF 原始字节。列表/元信息中不含（避免大文件常驻内存），打开文档时才加载 */
   data?: ArrayBuffer
+  /** APK 原生模式：文件已存入 app 私有目录的绝对路径（大文件不走 IndexedDB，原生直接读） */
+  nativePath?: string
 }
 
 export interface WhiteboardMeta {

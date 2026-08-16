@@ -1,9 +1,16 @@
-/* ============ 阅批 全局样式（暖黄纸面主题：纸 + 墨 + 琥珀点缀，触屏友好） ============ */
+﻿/* ============ 闃呮壒 鍏ㄥ眬鏍峰紡锛堟殩榛勭焊闈富棰橈細绾?+ 澧?+ 鐞ョ弨鐐圭紑锛岃Е灞忓弸濂斤級 ============ */
+:root {
+  /* 搴旂敤涓婚锛堣缃噷鍙崲锛夛細涓昏儗鏅?/ 闈㈡澘鑳屾櫙 / 杈规 / 鍗＄墖 */
+  --yuepi-bg: #fbf3d9;
+  --yuepi-panel: var(--yuepi-panel);
+  --yuepi-border: var(--yuepi-border);
+  --yuepi-card: var(--yuepi-card);
+}
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
   font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  background: #fbf3d9; /* 淡黄纸面 */
+  background: var(--yuepi-bg); /* 娣￠粍绾搁潰 */
   color: #433422;
   overscroll-behavior: none;
 }
@@ -12,12 +19,12 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 
 .app { display: flex; flex-direction: column; height: 100%; }
 
-/* ---------- 顶栏 ---------- */
+/* ---------- 椤舵爮 ---------- */
 .topbar {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 14px;
-  background: #fff8e6;
-  border-bottom: 1px solid #e3d5a8;
+  background: var(--yuepi-panel);
+  border-bottom: 1px solid var(--yuepi-border);
   min-height: 52px;
   flex: none;
 }
@@ -26,21 +33,21 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .topbar-right { margin-left: auto; display: flex; gap: 8px; }
 .topbar-mini {
   display: flex; align-items: center; gap: 6px;
-  padding: 5px 10px; background: #fff8e6;
-  border-bottom: 1px solid #e3d5a8; flex: none; min-height: 42px;
+  padding: 5px 10px; background: var(--yuepi-panel);
+  border-bottom: 1px solid var(--yuepi-border); flex: none; min-height: 42px;
 }
 
-/* ---------- 主区域 ---------- */
+/* ---------- 涓诲尯鍩?---------- */
 .main { display: flex; flex: 1; min-height: 0; position: relative; }
 
-/* ---------- 侧边栏（淡黄） ---------- */
+/* ---------- 渚ц竟鏍忥紙娣￠粍锛?---------- */
 .sidebar {
   width: 230px; flex: none;
-  background: #fdf4dc;
-  border-right: 1px solid #e3d5a8;
+  background: var(--yuepi-panel);
+  border-right: 1px solid var(--yuepi-border);
   display: flex; flex-direction: column;
 }
-.sidebar-tabs { display: flex; border-bottom: 1px solid #e3d5a8; }
+.sidebar-tabs { display: flex; border-bottom: 1px solid var(--yuepi-border); }
 .st-btn {
   flex: 1; padding: 10px 4px; background: none; border: none;
   color: #8a7a52; font-size: 13px; cursor: pointer;
@@ -54,16 +61,16 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   padding: 8px 26px 8px 8px;
   border-radius: 8px;
   cursor: pointer;
-  background: #fffaf0;
+  background: var(--yuepi-card);
   border: 1px solid transparent;
 }
-.file-item:hover { border-color: #e3d5a8; }
+.file-item:hover { border-color: var(--yuepi-border); }
 .file-item.active { background: #fde9b8; border-color: #d9b45c; }
 .file-name { font-size: 13px; color: #433422; word-break: break-all; }
 .file-meta { font-size: 11px; color: #8a7a52; margin-top: 2px; }
 .del-btn {
   position: absolute; right: 4px; top: 4px;
-  background: #fffaf0; border: 1px solid #d9c9a0; border-radius: 8px;
+  background: var(--yuepi-card); border: 1px solid #d9c9a0; border-radius: 8px;
   font-size: 14px; cursor: pointer; opacity: 0.85;
   padding: 4px 7px; min-width: 36px; text-align: center;
 }
@@ -72,7 +79,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   background: #dc2626; border-color: #f87171; color: #fff; font-weight: 700;
 }
 
-/* ---------- 通用按钮 ---------- */
+/* ---------- 閫氱敤鎸夐挳 ---------- */
 .tb-btn {
   background: #fffdf4; color: #433422;
   border: 1px solid #d9c9a0; border-radius: 8px;
@@ -91,14 +98,14 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .send-btn:hover { background: #b45309; }
 .send-btn.stop { background: #dc2626; color: #fff; }
 
-/* ---------- 内容区 ---------- */
+/* ---------- 鍐呭鍖?---------- */
 .content { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 
-/* ---------- PDF 视图 ---------- */
+/* ---------- PDF 瑙嗗浘 ---------- */
 .pdf-view { display: flex; flex-direction: column; height: 100%; }
 .pdf-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  padding: 8px 10px; background: #fff8e6; border-bottom: 1px solid #e3d5a8; flex: none;
+  padding: 8px 10px; background: var(--yuepi-panel); border-bottom: 1px solid var(--yuepi-border); flex: none;
 }
 .tb-group { display: flex; align-items: center; gap: 4px; }
 .tb-group.tb-dropdown { position: relative; }
@@ -110,8 +117,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .tb-menu-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .tb-menu-btn {
-  text-align: left; padding: 8px 10px; background: #fffaf0;
-  border: 1px solid #e3d5a8; border-radius: 8px; color: #433422;
+  text-align: left; padding: 8px 10px; background: var(--yuepi-card);
+  border: 1px solid var(--yuepi-border); border-radius: 8px; color: #433422;
   cursor: pointer; font-size: 13px;
 }
 .tb-menu-btn:hover { background: #fde9b8; border-color: #d9b45c; }
@@ -132,14 +139,19 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .pdf-toolbar-mini {
   display: flex; align-items: center; gap: 10px;
-  padding: 6px 10px; background: #fff8e6; border-bottom: 1px solid #e3d5a8; flex: none;
+  padding: 6px 10px; background: var(--yuepi-panel); border-bottom: 1px solid var(--yuepi-border); flex: none;
 }
 
-.pdf-scroll { flex: 1; overflow: auto; background: #fbf3d9; }
-/* 滚动中关闭大 canvas 的 box-shadow：阴影在滑动时每帧重绘，是卡顿来源之一（停止后恢复） */
+.pdf-scroll { flex: 1; overflow: auto; background: var(--yuepi-bg); position: relative; }
+/* 鎵撳紑涓殑鎻愮ず */
+.pdf-loading {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #8a7a52; font-size: 14px;
+}
+/* 婊氬姩涓叧闂ぇ canvas 鐨?box-shadow锛氶槾褰卞湪婊戝姩鏃舵瘡甯ч噸缁橈紝鏄崱椤挎潵婧愪箣涓€锛堝仠姝㈠悗鎭㈠锛?*/
 .pdf-scroll.scrolling .pdf-canvas { box-shadow: none; }
 .pdf-pages { display: flex; flex-direction: column; align-items: center; }
-/* 虚拟滚动布局：页面绝对定位在撑高的容器内，只挂载可视区附近的节点 */
+/* 铏氭嫙婊氬姩甯冨眬锛氶〉闈㈢粷瀵瑰畾浣嶅湪鎾戦珮鐨勫鍣ㄥ唴锛屽彧鎸傝浇鍙鍖洪檮杩戠殑鑺傜偣 */
 .pdf-pages.v { position: relative; display: block; }
 .page-wrap { position: relative; flex: none; }
 .page-wrap.v {
@@ -147,11 +159,11 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   left: 50%;
   transform: translateX(-50%);
 }
-/* 尺寸尚未解析的页面占位 */
+/* 灏哄灏氭湭瑙ｆ瀽鐨勯〉闈㈠崰浣?*/
 .page-ph {
   display: flex; align-items: center; justify-content: center;
-  background: #fdf4dc; color: #8a7a52; font-size: 13px;
-  border: 1px dashed #e3d5a8; border-radius: 4px;
+  background: var(--yuepi-panel); color: #8a7a52; font-size: 13px;
+  border: 1px dashed var(--yuepi-border); border-radius: 4px;
 }
 .page-scale { position: relative; }
 .pdf-canvas { display: block; background: #fff; box-shadow: 0 2px 12px rgba(120, 90, 20, 0.12); }
@@ -162,7 +174,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .anno-canvas.draw { pointer-events: auto; cursor: crosshair; }
 
-/* 框选发AI */
+/* 妗嗛€夊彂AI */
 .select-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .select-overlay.active {
   pointer-events: auto; cursor: crosshair;
@@ -176,11 +188,11 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .tb-hint { font-size: 12px; color: #b45309; }
 
-/* ---------- 白板视图 ---------- */
+/* ---------- 鐧芥澘瑙嗗浘 ---------- */
 .board-view { display: flex; flex-direction: column; height: 100%; }
 .board-toolbar {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; background: #fff8e6; border-bottom: 1px solid #e3d5a8; flex: none;
+  padding: 8px 12px; background: var(--yuepi-panel); border-bottom: 1px solid var(--yuepi-border); flex: none;
 }
 .board-name { font-weight: 700; font-size: 15px; color: #433422; }
 .board-hint { font-size: 12px; color: #8a7a52; flex: 1; }
@@ -188,8 +200,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .board-canvas .tl-container { background: #fffdf4; }
 .board-overlay-canvas { flex: 1; min-height: 0; isolation: isolate; }
 
-/* ---------- 设置：历史对话 ---------- */
-.settings-section { margin-top: 16px; border-top: 1px dashed #e3d5a8; padding-top: 10px; }
+/* ---------- 璁剧疆锛氬巻鍙插璇?---------- */
+.settings-section { margin-top: 16px; border-top: 1px dashed var(--yuepi-border); padding-top: 10px; }
 .settings-section-head {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 13px; color: #433422; margin-bottom: 6px;
@@ -201,20 +213,23 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .chat-item {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   text-align: left; width: 100%;
-  padding: 8px 10px; background: #fffaf0;
-  border: 1px solid #e3d5a8; border-radius: 8px; color: #433422;
+  padding: 8px 10px; background: var(--yuepi-card);
+  border: 1px solid var(--yuepi-border); border-radius: 8px; color: #433422;
   cursor: pointer; font-size: 13px;
 }
 .chat-item:hover { background: #fde9b8; border-color: #d9b45c; }
 .chat-item-title { font-weight: 600; word-break: break-all; }
 .chat-item-meta { font-size: 11px; color: #8a7a52; }
+.chat-item-row { display: flex; align-items: center; gap: 6px; position: relative; }
+.chat-item-row .chat-item { position: static; }
+.chat-item-row.active .chat-item { background: #fde9b8; border-color: #d9b45c; }
 
-/* ---------- AI 面板 ---------- */
+/* ---------- AI 闈㈡澘 ---------- */
 .chat-panel {
   display: flex; flex-direction: column;
-  background: #fff8e6; border-left: 1px solid #e3d5a8;
+  background: var(--yuepi-panel); border-left: 1px solid var(--yuepi-border);
 }
-.chat-panel.docked { width: 400px; flex: none; border-left: 1px solid #e3d5a8; }
+.chat-panel.docked { width: 400px; flex: none; border-left: 1px solid var(--yuepi-border); }
 .chat-panel.float {
   position: absolute;
   width: 400px;
@@ -235,7 +250,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   background: linear-gradient(135deg, transparent 50%, #b09a60 50%);
   border-bottom-right-radius: 14px;
 }
-.chat-tabs { display: flex; align-items: center; border-bottom: 1px solid #e3d5a8; flex: none; position: relative; }
+.chat-tabs { display: flex; align-items: center; border-bottom: 1px solid var(--yuepi-border); flex: none; position: relative; }
 .chat-panel.float .chat-tabs { cursor: grab; touch-action: none; }
 .ct-grip { padding: 6px 2px 6px 8px; color: #b09a60; font-size: 14px; user-select: none; }
 .ct-actions { margin-left: auto; display: flex; gap: 2px; padding: 3px 6px; }
@@ -260,7 +275,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   white-space: pre-wrap; word-break: break-word;
 }
 .msg.user .bubble { background: #fde68a; color: #451a03; border-top-right-radius: 4px; }
-.msg.assistant .bubble { background: #ffffff; color: #433422; border: 1px solid #e3d5a8; border-top-left-radius: 4px; }
+.msg.assistant .bubble { background: #ffffff; color: #433422; border: 1px solid var(--yuepi-border); border-top-left-radius: 4px; }
 .msg.system .bubble { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
 .msg-imgs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; justify-content: flex-end; }
 .msg-imgs img { max-width: 150px; max-height: 150px; border-radius: 8px; border: 1px solid #d9c9a0; }
@@ -269,8 +284,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .bubble.md :first-child { margin-top: 0; }
 .bubble.md :last-child { margin-bottom: 0; }
 .bubble.md pre {
-  background: #fdf4dc; padding: 8px; border-radius: 8px; overflow-x: auto;
-  font-size: 12px; border: 1px solid #e3d5a8;
+  background: var(--yuepi-panel); padding: 8px; border-radius: 8px; overflow-x: auto;
+  font-size: 12px; border: 1px solid var(--yuepi-border);
 }
 .bubble.md code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .bubble.md p { margin: 6px 0; }
@@ -279,13 +294,13 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .staged {
   display: flex; align-items: center; gap: 8px;
   margin: 0 10px 6px; padding: 6px 10px;
-  background: #fffaf0; border: 1px solid #d9c9a0; border-radius: 10px;
+  background: var(--yuepi-card); border: 1px solid #d9c9a0; border-radius: 10px;
   font-size: 12px; color: #5b4b2e;
 }
 .staged img { height: 44px; border-radius: 6px; }
 .staged-text { color: #8a7a52; }
 
-.chat-input { padding: 8px; display: flex; gap: 8px; align-items: flex-end; flex: none; border-top: 1px solid #e3d5a8; }
+.chat-input { padding: 8px; display: flex; gap: 8px; align-items: flex-end; flex: none; border-top: 1px solid var(--yuepi-border); }
 .input-btns { display: flex; flex-direction: column; gap: 4px; }
 .chat-input textarea {
   flex: 1; resize: none; background: #fffdf4; color: #433422;
@@ -294,7 +309,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .chat-input textarea:disabled { opacity: .6; }
 
-/* ---------- 白板叠加层（显示在 PDF 之上） ---------- */
+/* ---------- 鐧芥澘鍙犲姞灞傦紙鏄剧ず鍦?PDF 涔嬩笂锛?---------- */
 .board-overlay {
   position: absolute; inset: 0; z-index: 15;
   display: flex; flex-direction: column;
@@ -302,12 +317,12 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .board-overlay-header {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; background: #fff8e6; border-bottom: 1px solid #e3d5a8; flex: none;
+  padding: 8px 12px; background: var(--yuepi-panel); border-bottom: 1px solid var(--yuepi-border); flex: none;
 }
 .board-overlay-canvas { flex: 1; min-height: 0; }
 .board-overlay .tl-container { background: rgba(255, 253, 244, 0.85); }
 
-/* ---------- AI 面板标签页 + 内嵌网页 ---------- */
+/* ---------- AI 闈㈡澘鏍囩椤?+ 鍐呭祵缃戦〉 ---------- */
 .ct-btn {
   padding: 8px 10px; background: none; border: none;
   color: #8a7a52; font-size: 13px; cursor: pointer;
@@ -329,7 +344,7 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   color: #8a7a52; font-size: 13px; text-align: center; padding: 16px; line-height: 1.8;
 }
 
-/* ---------- 悬浮气泡 ---------- */
+/* ---------- 鎮诞姘旀场 ---------- */
 .ai-bubble {
   position: fixed; right: 20px; bottom: 24px;
   width: 60px; height: 60px; border-radius: 50%;
@@ -340,20 +355,20 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   z-index: 30; touch-action: none; user-select: none;
 }
 
-/* ---------- 弹窗 / Toast ---------- */
+/* ---------- 寮圭獥 / Toast ---------- */
 .modal-mask {
   position: fixed; inset: 0; background: rgba(90, 70, 20, 0.45);
   display: flex; align-items: center; justify-content: center; z-index: 50;
 }
 .modal {
   width: min(560px, 94vw); max-height: 88vh; overflow-y: auto;
-  background: #fff8e6; border: 1px solid #d9c9a0; border-radius: 14px;
+  background: var(--yuepi-panel); border: 1px solid #d9c9a0; border-radius: 14px;
   box-shadow: 0 12px 40px rgba(120, 90, 20, 0.35);
 }
-.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e3d5a8; font-size: 16px; font-weight: 700; color: #433422; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--yuepi-border); font-size: 16px; font-weight: 700; color: #433422; }
 .modal-body { padding: 14px 16px; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid #e3d5a8; }
-.settings-note { font-size: 12px; color: #6b5b2e; background: #fdf3d3; border: 1px solid #e3d5a8; border-radius: 8px; padding: 10px; line-height: 1.7; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--yuepi-border); }
+.settings-note { font-size: 12px; color: #6b5b2e; background: #fdf3d3; border: 1px solid var(--yuepi-border); border-radius: 8px; padding: 10px; line-height: 1.7; }
 .modal h3 { font-size: 14px; margin: 16px 0 8px; color: #b45309; }
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px; color: #5b4b2e; }
 .field input[type=text], .field input[type=password], .field select {
@@ -364,6 +379,15 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .field a { color: #b45309; cursor: pointer; text-decoration: underline; }
 .field-row { display: flex; gap: 8px; margin-top: 4px; }
 
+/* 鑳屾櫙涓婚閫夋嫨 */
+.bg-themes { display: flex; gap: 8px; }
+.bg-theme {
+  width: 56px; height: 40px; border-radius: 8px; cursor: pointer;
+  border: 2px solid #d9c9a0; font-size: 12px; color: #5b4b2e;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px;
+}
+.bg-theme.active { border-color: #f59e0b; outline: 2px solid #f59e0b; font-weight: 700; }
+
 .toast {
   position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
   background: #3f3a2e; border: 1px solid #b09a60; color: #fdf6e0;
@@ -371,8 +395,8 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   box-shadow: 0 6px 20px rgba(0,0,0,.35); max-width: 80vw;
 }
 
-/* ---------- 首页 ---------- */
-.home { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+/* ---------- 棣栭〉 ---------- */
+.home { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--yuepi-bg); }
 .home-card {
   background: #fffdf2; border: 1px solid #e5d5a1; border-radius: 16px;
   padding: 28px 32px; max-width: 560px; line-height: 1.9;
@@ -382,15 +406,14 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 .home-card p { font-size: 14px; color: #44403c; }
 .home-btns { display: flex; gap: 12px; margin-top: 18px; }
 
-/* ---------- 平板适配 ---------- */
+/* ---------- 骞虫澘閫傞厤 ---------- */
 @media (max-width: 900px) {
   .sidebar { width: 200px; }
   .chat-panel.docked { width: 320px; }
   .actions { margin-left: 0; }
 }
 @media (max-width: 700px) {
-  /* 窄屏（竖屏）下侧栏变浮层，可被顶栏按钮呼出/隐藏。
-     z-index 需高于 tldraw 画布的 UI 层（--layer-panels: 300），否则白板页面名/工具栏会盖住侧栏 */
+  /* 绐勫睆锛堢珫灞忥級涓嬩晶鏍忓彉娴眰锛屽彲琚《鏍忔寜閽懠鍑?闅愯棌銆?     z-index 闇€楂樹簬 tldraw 鐢诲竷鐨?UI 灞傦紙--layer-panels: 300锛夛紝鍚﹀垯鐧芥澘椤甸潰鍚?宸ュ叿鏍忎細鐩栦綇渚ф爮 */
   .sidebar {
     position: absolute; left: 0; top: 0; bottom: 0; z-index: 350;
     box-shadow: 0 4px 28px rgba(120, 90, 20, 0.4);

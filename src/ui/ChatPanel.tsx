@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AISettings, AIProvider, ChatSession } from '../core/types'
 import { PROVIDERS } from '../core/ai/providers'
 import { renderMd } from '../core/md'
+import ChatSettingsModal from './ChatSettingsModal'
 
 export interface StagedAttach {
   image?: string
@@ -22,7 +23,14 @@ interface Props {
   onToggleDock: () => void
   onClose: () => void
   onNew: () => void
+  /** 打开完整设置（配置 API Key 等） */
   onOpenSettings: () => void
+  /** 精简设置（路由 / 对话管理）所需数据与回调 */
+  chats: ChatSession[]
+  activeChatId: string | null
+  onOpenChat: (id: string) => void
+  onDeleteChat: (id: string) => void
+  onSaveSettings: (s: AISettings) => void
 }
 
 type Tab = 'chat' | 'web'
@@ -52,6 +60,7 @@ export default function ChatPanel(p: Props) {
   const [webSrc, setWebSrc] = useState('')
   const [webReload, setWebReload] = useState(0)
   const [dragOver, setDragOver] = useState(false)
+  const [showChatSettings, setShowChatSettings] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const camRef = useRef<HTMLInputElement>(null)
@@ -269,7 +278,7 @@ export default function ChatPanel(p: Props) {
           <button className="tb-btn" onClick={p.onToggleDock} title="切换悬浮/分屏">
             {p.docked ? '🪟' : '📐'}
           </button>
-          <button className="tb-btn" onClick={p.onOpenSettings} title="设置">⚙️</button>
+          <button className="tb-btn" onClick={() => setShowChatSettings(true)} title="AI 设置（路由 / 对话管理）">⚙️</button>
           <button className="tb-btn" onClick={p.onClose} title="收起">🗕</button>
         </div>
       </div>
@@ -436,6 +445,18 @@ export default function ChatPanel(p: Props) {
       )}
 
       {!p.docked && <div className="resize-corner" onPointerDown={startResizeFloat} title="拖动调整大小" />}
+
+      {showChatSettings && (
+        <ChatSettingsModal
+          settings={p.settings}
+          chats={p.chats}
+          activeChatId={p.activeChatId}
+          onSave={p.onSaveSettings}
+          onOpenChat={p.onOpenChat}
+          onDeleteChat={p.onDeleteChat}
+          onClose={() => setShowChatSettings(false)}
+        />
+      )}
     </div>
   )
 }
