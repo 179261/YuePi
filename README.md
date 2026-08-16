@@ -60,7 +60,7 @@ npm run preview    # 本地预览构建产物
 
 打开应用 → 「⚙️ 设置」：
 
-1. **DeepSeek**：到 [platform.deepseek.com](https://platform.deepseek.com) 创建 Key。模型可用 `deepseek-chat` / `deepseek-reasoner` / `deepseek-4v-flash`（视觉）/ `deepseek-pro`，也可手填
+1. **DeepSeek**：到 [platform.deepseek.com](https://platform.deepseek.com) 创建 Key。模型可用 `deepseek-v4-flash`（默认，支持图片提问）/ `deepseek-v4-pro`，也可手填其它模型名
 2. **豆包**：到 [console.volcengine.com/ark](https://console.volcengine.com/ark) 创建 Key，模型填视觉模型名或接入点 `ep-xxx`
 3. **自定义①**：如硅基流动（默认预填 `https://api.siliconflow.cn/v1`，模型 `deepseek-ai/DeepSeek-V3`）、Kimi、OpenRouter 等任意 OpenAI 兼容平台
 4. **自定义②**：如智谱AI（默认预填 `https://open.bigmodel.cn/api/paas/v4`，模型 `glm-4-flash`）

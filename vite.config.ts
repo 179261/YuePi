@@ -32,6 +32,7 @@ export default defineConfig({
   ],
   build: {
     chunkSizeWarningLimit: 5000,
+    // 保持 es2020：pdf.js 3.11 经典 Worker + 兼容旧内核平板浏览器（如鸿蒙 4.2）
     target: 'es2020',
     rollupOptions: {
       output: {

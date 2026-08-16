@@ -9,6 +9,8 @@ export interface AnnotatorOptions {
   height: number
   /** 当前缩放倍率（用于把指针坐标换算回基准坐标） */
   getZoom: () => number
+  /** 画布物理分辨率倍率（与 PDF 渲染精度对齐；不传则用 devicePixelRatio） */
+  quality?: number
   /** 一笔结束后回调（用于持久化 / 刷新） */
   onCommit: (ann: PageAnnotation) => void
 }
@@ -74,11 +76,21 @@ export class Annotator {
   }
 
   resize() {
-    this.dpr = Math.max(1, window.devicePixelRatio || 1)
+    this.dpr = Math.max(1, window.devicePixelRatio || 1, this.opts.quality || 0)
     this.canvas.width = Math.max(1, Math.floor(this.opts.width * this.dpr))
     this.canvas.height = Math.max(1, Math.floor(this.opts.height * this.dpr))
     this.canvas.style.width = `${this.opts.width}px`
     this.canvas.style.height = `${this.opts.height}px`
+    this.render()
+  }
+
+  /** 渲染精度变化时更新批注画布物理分辨率（与 PDF 画布保持一致，避免批注比页面模糊） */
+  setQuality(q: number) {
+    const d = Math.max(1, window.devicePixelRatio || 1, q)
+    if (d === this.dpr) return
+    this.dpr = d
+    this.canvas.width = Math.max(1, Math.floor(this.opts.width * d))
+    this.canvas.height = Math.max(1, Math.floor(this.opts.height * d))
     this.render()
   }
 

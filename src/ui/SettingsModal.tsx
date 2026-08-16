@@ -1,6 +1,6 @@
-// ============ 设置弹窗（API Key / 模型 / 自定义提供商①② / 文字·图片双路由） ============
+// ============ 设置弹窗（API Key / 模型 / 自定义提供商①② / 文字·图片双路由 / 历史对话） ============
 import { useState } from 'react'
-import type { AISettings, AIProvider } from '../core/types'
+import type { AISettings, AIProvider, ChatSession } from '../core/types'
 import { CUSTOM2_MODELS, CUSTOM_MODELS, DEEPSEEK_MODELS, DOUBAO_MODELS } from '../core/types'
 import { PROVIDERS, testConnection } from '../core/ai/providers'
 
@@ -8,14 +8,18 @@ const ALL_PROVIDERS: AIProvider[] = ['deepseek', 'doubao', 'custom', 'custom2']
 
 interface Props {
   settings: AISettings
+  chats: ChatSession[]
   onSave: (s: AISettings) => void
   onClose: () => void
   onToast: (msg: string) => void
+  /** 从设置里打开一条历史对话（App 会关闭设置并切换到该对话） */
+  onOpenChat: (id: string) => void
 }
 
-export default function SettingsModal({ settings, onSave, onClose, onToast }: Props) {
+export default function SettingsModal({ settings, chats, onSave, onClose, onToast, onOpenChat }: Props) {
   const [draft, setDraft] = useState<AISettings>({ ...settings })
   const [testing, setTesting] = useState<AIProvider | null>(null)
+  const [showChats, setShowChats] = useState(true)
 
   const set = (patch: Partial<AISettings>) => setDraft((d) => ({ ...d, ...patch }))
 
@@ -49,7 +53,7 @@ export default function SettingsModal({ settings, onSave, onClose, onToast }: Pr
             <input type="password" value={draft.deepseekKey} placeholder="sk-…" onChange={(e) => set({ deepseekKey: e.target.value })} />
           </label>
           <label className="field">
-            <span>模型（deepseek-4v-flash 等视觉模型支持图片提问；也可手填其它模型名）</span>
+            <span>模型（v4-flash / v4-pro；v4-flash 支持图片提问，也可手填其它模型名）</span>
             <input type="text" list="deepseek-models" value={draft.deepseekModel} onChange={(e) => set({ deepseekModel: e.target.value })} />
             <datalist id="deepseek-models">
               {DEEPSEEK_MODELS.map((m) => (
@@ -159,6 +163,28 @@ export default function SettingsModal({ settings, onSave, onClose, onToast }: Pr
             </button>
             {draft.custom2WebUrl.trim() && (
               <button className="tb-btn act" onClick={() => open(draft.custom2WebUrl.trim())}>打开网页版</button>
+            )}
+          </div>
+
+          {/* 历史对话：与左侧栏「对话」同一数据源，点击直接打开（默认展开，便于查看） */}
+          <div className="settings-section">
+            <div className="settings-section-head">
+              <span className="settings-section-title">📋 历史对话（{chats.length} 条，与左侧栏同步）</span>
+              <button className="tb-btn" onClick={() => setShowChats((v) => !v)}>{showChats ? '收起' : '展开'}</button>
+            </div>
+            {showChats && (
+              <div className="settings-chats">
+                {chats.length === 0 ? (
+                  <div className="sidebar-empty">还没有对话记录，点「🤖 AI助手」开始提问</div>
+                ) : (
+                  chats.map((c) => (
+                    <button key={c.id} className="chat-item" onClick={() => onOpenChat(c.id)}>
+                      <span className="chat-item-title">{c.title || '未命名对话'}</span>
+                      <span className="chat-item-meta">{c.messages.length} 条 · {new Date(c.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    </button>
+                  ))
+                )}
+              </div>
             )}
           </div>
 

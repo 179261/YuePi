@@ -1,6 +1,7 @@
 node_modules
 .npm-cache
-dist
+# dist 是构建产物，但需要随仓库上传（GitHub Pages 部署直接使用 dist），故不忽略
+# 更新网页版后：npm run build → git add dist → 提交推送即可更新线上版本
 dev-dist
 public/cmaps
 yuepi-dist.zip

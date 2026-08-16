@@ -136,8 +136,23 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 
 .pdf-scroll { flex: 1; overflow: auto; background: #fbf3d9; }
+/* 滚动中关闭大 canvas 的 box-shadow：阴影在滑动时每帧重绘，是卡顿来源之一（停止后恢复） */
+.pdf-scroll.scrolling .pdf-canvas { box-shadow: none; }
 .pdf-pages { display: flex; flex-direction: column; align-items: center; }
+/* 虚拟滚动布局：页面绝对定位在撑高的容器内，只挂载可视区附近的节点 */
+.pdf-pages.v { position: relative; display: block; }
 .page-wrap { position: relative; flex: none; }
+.page-wrap.v {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+/* 尺寸尚未解析的页面占位 */
+.page-ph {
+  display: flex; align-items: center; justify-content: center;
+  background: #fdf4dc; color: #8a7a52; font-size: 13px;
+  border: 1px dashed #e3d5a8; border-radius: 4px;
+}
 .page-scale { position: relative; }
 .pdf-canvas { display: block; background: #fff; box-shadow: 0 2px 12px rgba(120, 90, 20, 0.12); }
 .anno-canvas {
@@ -169,8 +184,30 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
 }
 .board-name { font-weight: 700; font-size: 15px; color: #433422; }
 .board-hint { font-size: 12px; color: #8a7a52; flex: 1; }
-.board-canvas { flex: 1; min-height: 0; background: #fffdf4; }
+.board-canvas { flex: 1; min-height: 0; background: #fffdf4; position: relative; overflow: hidden; isolation: isolate; }
 .board-canvas .tl-container { background: #fffdf4; }
+.board-overlay-canvas { flex: 1; min-height: 0; isolation: isolate; }
+
+/* ---------- 设置：历史对话 ---------- */
+.settings-section { margin-top: 16px; border-top: 1px dashed #e3d5a8; padding-top: 10px; }
+.settings-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: #433422; margin-bottom: 6px;
+}
+.settings-section-title { font-weight: 700; font-size: 14px; color: #b45309; }
+.settings-chats {
+  display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto;
+}
+.chat-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  text-align: left; width: 100%;
+  padding: 8px 10px; background: #fffaf0;
+  border: 1px solid #e3d5a8; border-radius: 8px; color: #433422;
+  cursor: pointer; font-size: 13px;
+}
+.chat-item:hover { background: #fde9b8; border-color: #d9b45c; }
+.chat-item-title { font-weight: 600; word-break: break-all; }
+.chat-item-meta { font-size: 11px; color: #8a7a52; }
 
 /* ---------- AI 面板 ---------- */
 .chat-panel {
@@ -352,9 +389,10 @@ input, select, textarea { font-family: inherit; font-size: 15px; }
   .actions { margin-left: 0; }
 }
 @media (max-width: 700px) {
-  /* 窄屏（竖屏）下侧栏变浮层，可被顶栏按钮呼出/隐藏 */
+  /* 窄屏（竖屏）下侧栏变浮层，可被顶栏按钮呼出/隐藏。
+     z-index 需高于 tldraw 画布的 UI 层（--layer-panels: 300），否则白板页面名/工具栏会盖住侧栏 */
   .sidebar {
-    position: absolute; left: 0; top: 0; bottom: 0; z-index: 18;
+    position: absolute; left: 0; top: 0; bottom: 0; z-index: 350;
     box-shadow: 0 4px 28px rgba(120, 90, 20, 0.4);
   }
   .pdf-toolbar { gap: 4px; }

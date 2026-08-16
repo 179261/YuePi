@@ -76,7 +76,8 @@ export default function FileSidebar(p: Props) {
       {tab === 'pdf' && (
         <div className="sidebar-body">
           <button className="tb-btn act import-btn" onClick={() => fileRef.current?.click()}>＋ 导入 PDF</button>
-          <input id="pdf-file-input" ref={fileRef} type="file" accept="application/pdf,.pdf" hidden
+          {/* 根级 App.tsx 另有一个同名入口（开始使用页）；这里只保留 ref，避免重复 id */}
+          <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden
             onChange={(e) => {
               const f = e.target.files?.[0]
               e.target.value = ''

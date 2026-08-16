@@ -1,4 +1,4 @@
-// ============ PDF 渲染引擎（pdf.js v3.11，经典 Worker，兼容旧内核如 HarmonyOS 4.2 浏览器） ============
+// ============ PDF 渲染引擎（pdf.js v3.11，经典 Worker，兼容旧内核如鸿蒙 4.2 平板浏览器） ============
 import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url'
@@ -26,6 +26,36 @@ export async function loadPDF(data: ArrayBuffer): Promise<PDFDocumentProxy> {
 export function pageSize1(page: PDFPageProxy): { width: number; height: number } {
   const vp = page.getViewport({ scale: 1 })
   return { width: vp.width, height: vp.height }
+}
+
+/**
+ * 并行测量一批页面的尺寸。
+ * getPage(i) 只解析页字典（不渲染），很快，但串行 await 几百次在平板上仍要数秒。
+ * 这里用固定并发数批量并行，显著缩短打开/滚动到未测页的等待。
+ * @param pageNums 1-based 页码数组
+ */
+export async function measurePageSizes(
+  pdf: PDFDocumentProxy,
+  pageNums: number[],
+  concurrency = 16
+): Promise<Map<number, { width: number; height: number }>> {
+  const out = new Map<number, { width: number; height: number }>()
+  if (!pageNums.length) return out
+  let idx = 0
+  const n = Math.min(concurrency, pageNums.length)
+  const workers = Array.from({ length: n }, async () => {
+    while (idx < pageNums.length) {
+      const pn = pageNums[idx++]
+      try {
+        const page = await pdf.getPage(pn)
+        out.set(pn - 1, pageSize1(page))
+      } catch {
+        /* 个别页解析失败跳过，不阻塞整批 */
+      }
+    }
+  })
+  await Promise.all(workers)
+  return out
 }
 
 export interface RenderResult {

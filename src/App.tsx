@@ -58,6 +58,7 @@ export default function App() {
   const [activePdf, setActivePdf] = useState<PDFDocMeta | null>(null)
 
   const pdfViewerRef = useRef<PdfViewerHandle>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const toastTimer = useRef<number>(0)
   const pageSaveTimer = useRef<number>(0)
@@ -440,6 +441,29 @@ export default function App() {
     setBoardOverlayOpen(true)
   }, [boardOverlayOpen, boards, activeBoardId, refreshLists])
 
+  // ---------- 顶栏「白板 ⇄ PDF」切换 ----------
+  /** 切到白板视图（没有当前白板时自动新建） */
+  const goBoard = useCallback(async () => {
+    if (!boards.some((b) => b.id === activeBoardId)) {
+      const wb: WhiteboardMeta = {
+        id: uid(),
+        name: '白板 ' + new Date().toLocaleDateString('zh-CN') + ' ' + new Date().toTimeString().slice(0, 5),
+        updatedAt: Date.now(),
+        snapshot: null
+      }
+      await db.putWhiteboard(wb)
+      await refreshLists()
+      setActiveBoardId(wb.id)
+    }
+    setView('board')
+  }, [boards, activeBoardId, refreshLists])
+
+  /** 切回 PDF 视图（没有打开过的 PDF 时回开始页） */
+  const goPdf = useCallback(() => {
+    if (activePdf) setView('pdf')
+    else setView('home')
+  }, [activePdf])
+
   // ---------- 设置 ----------
   const saveSettings = useCallback(async (s: AISettings) => {
     setSettings(s)
@@ -479,13 +503,17 @@ export default function App() {
           <span className="logo">✒️ 阅批</span>
           <span className="logo-sub">PDF批注 · 白板 · AI助手</span>
           <div className="topbar-right">
-            <button className="tb-btn act" onClick={() => void newBoard()}>🎨 白板</button>
-            <button className="tb-btn act" onClick={() => setChatOpen((v) => !v)}>
+            {/* 隐藏 = 收起顶栏（浮出迷你栏可恢复） */}
+            <button className="tb-btn" onClick={toggleTopbar} title="收起顶栏">▾ 隐藏</button>
+            {/* 白板 ⇄ PDF：在 PDF 视图显示「白板」，在白板视图显示「PDF」 */}
+            {view === 'board' ? (
+              <button className="tb-btn act" onClick={goPdf} title="返回 PDF 阅读">📄 PDF</button>
+            ) : (
+              <button className="tb-btn act" onClick={() => void goBoard()} title="打开白板">🎨 白板</button>
+            )}
+            <button className="tb-btn act" onClick={() => setChatOpen((v) => !v)} title="AI 助手">
               {chatOpen ? '🙈 收起AI' : '🤖 AI助手'}
             </button>
-            <button className="tb-btn" onClick={() => pdfViewerRef.current?.toggleToolbar()} title="显示/隐藏 PDF 工具栏（画笔/框选等）">📄 ▾</button>
-            <button className="tb-btn act" onClick={() => setSettingsOpen(true)}>⚙️ 设置</button>
-            <button className="tb-btn" onClick={toggleTopbar} title="收起顶栏">▾</button>
           </div>
         </header>
       ) : (
@@ -568,7 +596,7 @@ export default function App() {
             />
           ) : (
             <HomeView
-              onImport={() => document.getElementById('pdf-file-input')?.click()}
+              onImport={() => fileInputRef.current?.click()}
               onNewBoard={() => void newBoard()}
             />
           )}
@@ -605,10 +633,34 @@ export default function App() {
       )}
 
       {settingsOpen && (
-        <SettingsModal settings={settings} onSave={(s) => void saveSettings(s)} onClose={() => setSettingsOpen(false)} onToast={showToast} />
+        <SettingsModal
+          settings={settings}
+          chats={chats}
+          onSave={(s) => void saveSettings(s)}
+          onClose={() => setSettingsOpen(false)}
+          onToast={showToast}
+          onOpenChat={(id) => {
+            setSettingsOpen(false)
+            void openChat(id)
+          }}
+        />
       )}
 
       {toast && <div className="toast">{toast}</div>}
+
+      {/* 根级隐藏文件选择器：无论侧栏是否展开都能用「开始使用 → 导入 PDF」导入（此前只挂在侧栏里，窄屏侧栏收起时点击无反应） */}
+      <input
+        ref={fileInputRef}
+        id="pdf-file-input"
+        type="file"
+        accept="application/pdf,.pdf"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (f) void importPDF(f)
+        }}
+      />
     </div>
   )
 }

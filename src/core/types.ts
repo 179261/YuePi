@@ -96,7 +96,7 @@ export interface AISettings {
 
 export const DEFAULT_SETTINGS: AISettings = {
   deepseekKey: '',
-  deepseekModel: 'deepseek-chat',
+  deepseekModel: 'deepseek-v4-flash',
   doubaoKey: '',
   doubaoModel: 'doubao-1.5-vision-pro-32k-250115',
   customName: '硅基流动',
@@ -127,6 +127,8 @@ export const DOUBAO_MODELS = [
 ] as const
 
 export const DEEPSEEK_MODELS = [
+  'deepseek-v4-flash',
+  'deepseek-v4-pro',
   'deepseek-chat',
   'deepseek-reasoner',
   'deepseek-4v-flash',
