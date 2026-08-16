@@ -2,12 +2,13 @@
 import { useState } from 'react'
 import type { AISettings, AIProvider, ChatSession } from '../core/types'
 
-const ALL_PROVIDERS: AIProvider[] = ['deepseek', 'doubao', 'custom', 'custom2']
+const ALL_PROVIDERS: AIProvider[] = ['deepseek', 'doubao', 'custom', 'custom2', 'other']
 const PROVIDER_LABEL: Record<AIProvider, string> = {
   deepseek: 'DeepSeek',
-  doubao: '豆包',
+  doubao: '火山方舟',
   custom: '硅基流动',
-  custom2: '智谱AI'
+  custom2: '智谱AI',
+  other: '其它'
 }
 
 interface Props {

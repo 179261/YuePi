@@ -25,7 +25,7 @@ export const PROVIDERS: Record<AIProvider, ProviderDef> = {
   deepseek: {
     kind: 'deepseek',
     label: () => 'DeepSeek',
-    baseUrl: () => 'https://api.deepseek.com',
+    baseUrl: (s) => (s.deepseekBaseUrl?.trim() || 'https://api.deepseek.com').replace(/\/+$/, ''),
     getKey: (s) => s.deepseekKey,
     getModel: (s) => s.deepseekModel,
     // deepseek-4v-flash / deepseek-vl 等视觉模型支持图片输入
@@ -36,7 +36,7 @@ export const PROVIDERS: Record<AIProvider, ProviderDef> = {
   doubao: {
     kind: 'doubao',
     label: () => '豆包（火山方舟）',
-    baseUrl: () => 'https://ark.cn-beijing.volces.com/api/v3',
+    baseUrl: (s) => (s.doubaoBaseUrl?.trim() || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/+$/, ''),
     getKey: (s) => s.doubaoKey,
     getModel: (s) => s.doubaoModel,
     supportsVision: () => true,
@@ -61,6 +61,16 @@ export const PROVIDERS: Record<AIProvider, ProviderDef> = {
     getModel: (s) => s.custom2Model?.trim() || 'glm-4-flash',
     supportsVision: (s) => !!s.custom2Vision,
     webUrl: (s) => s.custom2WebUrl?.trim() || '',
+    signupUrl: () => ''
+  },
+  other: {
+    kind: 'other',
+    label: (s) => s.otherName?.trim() || '其它',
+    baseUrl: (s) => (s.otherBaseUrl?.trim() || '').replace(/\/+$/, ''),
+    getKey: (s) => s.otherKey,
+    getModel: (s) => s.otherModel?.trim() || '',
+    supportsVision: (s) => !!s.otherVision,
+    webUrl: (s) => s.otherWebUrl?.trim() || '',
     signupUrl: () => ''
   }
 }

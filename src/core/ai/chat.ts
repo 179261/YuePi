@@ -52,11 +52,12 @@ export function pickProvider(settings: AISettings, hasImages: boolean): AIProvid
       (PROVIDERS.deepseek.supportsVision(settings) ? firstWithKey(settings, ['deepseek']) : null) ??
       (PROVIDERS.custom.supportsVision(settings) ? firstWithKey(settings, ['custom']) : null) ??
       (PROVIDERS.custom2.supportsVision(settings) ? firstWithKey(settings, ['custom2']) : null) ??
-      firstWithKey(settings, ['deepseek', 'custom', 'custom2']) ??
+      (PROVIDERS.other.supportsVision(settings) ? firstWithKey(settings, ['other']) : null) ??
+      firstWithKey(settings, ['deepseek', 'custom', 'custom2', 'other']) ??
       'deepseek'
     )
   }
-  return firstWithKey(settings, ['deepseek', 'custom', 'custom2', 'doubao']) ?? 'deepseek'
+  return firstWithKey(settings, ['deepseek', 'custom', 'custom2', 'doubao', 'other']) ?? 'deepseek'
 }
 
 /**

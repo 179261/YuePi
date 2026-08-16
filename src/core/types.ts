@@ -67,28 +67,39 @@ export interface ChatSession {
   messages: ChatMessage[]
 }
 
-export type AIProvider = 'deepseek' | 'doubao' | 'custom' | 'custom2'
+export type AIProvider = 'deepseek' | 'doubao' | 'custom' | 'custom2' | 'other'
 
 export interface AISettings {
   deepseekKey: string
   deepseekModel: string
+  /** DeepSeek 接口地址（默认自动填，可改，如第三方网关） */
+  deepseekBaseUrl: string
   doubaoKey: string
   /** 豆包模型名或推理接入点 ep-xxx */
   doubaoModel: string
-  /** 自定义 OpenAI 兼容提供商①（如硅基流动 / Kimi / OpenRouter） */
+  /** 豆包/火山方舟接口地址（默认自动填，可改） */
+  doubaoBaseUrl: string
+  /** 自定义 OpenAI 兼容提供商①（默认硅基流动） */
   customName: string
   customBaseUrl: string
   customKey: string
   customModel: string
   customVision: boolean
   customWebUrl: string
-  /** 自定义 OpenAI 兼容提供商②（如智谱 / 通义等） */
+  /** 自定义 OpenAI 兼容提供商②（默认智谱AI） */
   custom2Name: string
   custom2BaseUrl: string
   custom2Key: string
   custom2Model: string
   custom2Vision: boolean
   custom2WebUrl: string
+  /** 「其它」自由自定义提供商（名称/接口/Key/模型全部手填） */
+  otherName: string
+  otherBaseUrl: string
+  otherKey: string
+  otherModel: string
+  otherVision: boolean
+  otherWebUrl: string
   /** 提问路由：文字与图片可分别指定提供商（'auto' = 自动选择） */
   textRoute: AIProvider | 'auto'
   imageRoute: AIProvider | 'auto'
@@ -99,8 +110,10 @@ export interface AISettings {
 export const DEFAULT_SETTINGS: AISettings = {
   deepseekKey: '',
   deepseekModel: 'deepseek-v4-flash',
+  deepseekBaseUrl: 'https://api.deepseek.com',
   doubaoKey: '',
   doubaoModel: 'doubao-1.5-vision-pro-32k-250115',
+  doubaoBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
   customName: '硅基流动',
   customBaseUrl: 'https://api.siliconflow.cn/v1',
   customKey: '',
@@ -113,6 +126,12 @@ export const DEFAULT_SETTINGS: AISettings = {
   custom2Model: 'glm-4-flash',
   custom2Vision: false,
   custom2WebUrl: 'https://open.bigmodel.cn',
+  otherName: '其它',
+  otherBaseUrl: '',
+  otherKey: '',
+  otherModel: '',
+  otherVision: false,
+  otherWebUrl: '',
   textRoute: 'auto',
   imageRoute: 'auto',
   defaultProvider: 'auto',
