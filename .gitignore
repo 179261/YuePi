@@ -1,7 +1,7 @@
 node_modules
 .npm-cache
-# dist 是构建产物，但需要随仓库上传（GitHub Pages 部署直接使用 dist），故不忽略
-# 更新网页版后：npm run build → git add dist → 提交推送即可更新线上版本
+# dist 构建产物不放 main 分支：部署分支 gh-pages 专门存放（更新网页版：npm run build → 推送 gh-pages）
+dist
 dev-dist
 public/cmaps
 yuepi-dist.zip
